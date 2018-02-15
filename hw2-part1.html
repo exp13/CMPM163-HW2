@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Rathalos at the beach</title>
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#777;
+				padding:0;
+				margin:0;
+				overflow:hidden;
+			}
+
+			#info {
+				position: absolute;
+				top: 0px;
+				width: 100%;
+				color: #ffffff;
+			}
+
+		</style>
+	</head>
+	
+	<body>
+
+		<div id="container"></div>
+
+		<script src="js/three.js"></script>
+		<script src="js/OrbitControls.js"></script>
+		<script src="js/dat.gui.min.js"></script>
+
+		<script id="skyVertexShader" type="x-shader/x-vertex">
+
+			precision mediump float;
+
+			uniform mat4 modelMatrix;
+			uniform mat4 viewMatrix;
+			uniform mat4 projectionMatrix;
+
+			attribute vec3 position;
+
+			varying vec3 vWorldPosition;
+
+			void main(){
+
+				vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+
+				vec4 pos = viewMatrix * modelMatrix * vec4(position, 1.0);
+
+				gl_Position = projectionMatrix * pos;
+
+			}
+
+		</script>
+
+
+		<script id="skyFragmentShader" type="x-shader/x-fragment">
+
+			precision mediump float;
+			
+			uniform samplerCube tCube;
+			varying vec3 vWorldPosition;
+
+			void main(){
+
+				gl_FragColor = textureCube(tCube, vWorldPosition);
+
+			}
+
+		</script>
+
+		<script id="heightVertexShader" type="x-shader/x-vertex">
+
+			precision mediump float;
+
+			uniform mat4 modelMatrix;
+			uniform mat4 viewMatrix;
+			uniform mat4 projectionMatrix;
+			uniform sampler2D pTex;
+			uniform float mixMod;
+
+			attribute vec3 position;
+			attribute vec2 uv;
+			attribute vec3 normal;
+
+			uniform float displaceAmt;
+
+			varying vec2 vUv;
+			varying float mixVal;
+
+			void main(){
+
+				vUv = uv;
+
+				vec4 clr = texture2D(pTex, uv);
+				float vDisplace = mix(clr.g, clr.b, 0.5) * displaceAmt;
+				mixVal = mix(clr.g, clr.b, 0.5) * mixMod * (displaceAmt / 5.0);
+
+				vec3 newPos = position + normal * vDisplace;
+
+				gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(newPos, 1.0);
+
+			}
+
+		</script>
+
+		<script id="heightFragmentShader" type="x-shader/x-fragment">
+
+			precision mediump float;
+
+			uniform sampler2D gTex, hTex, sTex;
+
+			varying vec2 vUv;
+			varying float mixVal;
+
+			void main(){
+
+				vec4 grass = texture2D(gTex, vUv);
+				vec4 hill = texture2D(hTex, vUv);
+				vec4 snow = texture2D(sTex, vUv);
+
+				vec4 mix1 = mix(grass, hill, min(1.0, mixVal*8.0));
+				vec4 mix2 = mix(hill, snow, mixVal);
+				vec4 mix3 = mix(mix1, mix2, mixVal);
+
+				gl_FragColor = vec4(mix3.rgb,1.0);
+			}
+
+		</script>
+
+		<script id="waterVertexShader" type="x-shader/x-vertex">
+			
+			precision mediump float;
+
+			uniform mat4 modelMatrix, viewMatrix, projectionMatrix;
+			uniform vec3 cameraPosition;
+			uniform float fBias;
+			uniform float fScale;
+			uniform float fPower;
+			uniform float vDisplace;
+			uniform float displaceAmt;
+			uniform float mixMod;
+			uniform sampler2D pTex;
+
+			uniform float waveWidth;
+			uniform float waveHeight;
+			uniform float time;
+
+			attribute vec3 position, normal;
+			attribute vec2 uv;
+
+			varying vec3 wPosition;
+			varying vec3 wNormal;
+			varying vec3 vI;
+			varying float reflectionFactor;
+			varying vec2 vUv;
+			varying float mixVal;
+			varying vec3 newNormal;
+
+			void main(){
+				
+				float zDisplacement = (sin(waveWidth * position.x + time * 1.2) *
+										cos(waveWidth * position.y + time * 0.3) * waveHeight)
+									+
+									(sin(waveWidth * position.y + time * -0.5) *
+										cos(waveWidth * position.x + time * 2.1) * waveHeight);
+
+				float rI = 0.01;
+
+				wNormal = normalize(mat3(modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz)*normal);
+				newNormal = normalize(vec3(wNormal.x + zDisplacement*rI, wNormal.y, wNormal.z + zDisplacement*rI));
+
+				wPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+
+				vI = wPosition - cameraPosition;
+				vUv = uv;
+
+				vec4 clr = texture2D(pTex, vec2(vUv.x, vUv.y));
+				float vDisplace = mix(clr.g, clr.b, 0.5) * displaceAmt;
+				mixVal = mix(clr.g, clr.b, 0.5) * mixMod * (displaceAmt / 5.0);
+
+				reflectionFactor = fBias + fScale * pow(1.0 + dot(normalize(vI), wNormal), fPower);
+
+				
+
+				wPosition = vec3(wPosition.x, zDisplacement, wPosition.z);
+
+				gl_Position = projectionMatrix * viewMatrix * vec4(wPosition, 1.0);
+			}
+
+		</script>
+
+		<script id="waterFragmentShader" type="x-shader/x-fragment">
+			
+			precision mediump float;
+
+			uniform samplerCube tCube;
+			uniform sampler2D gTex, hTex, sTex;
+
+
+			varying vec3 wPosition;
+			varying vec3 wNormal;
+			varying vec3 newNormal;
+			varying vec3 vI;
+			varying float reflectionFactor;
+			varying vec2 vUv;
+			varying float mixVal;
+
+			void main(){
+
+				vec4 grass = texture2D(gTex, vUv);
+				vec4 hill = texture2D(hTex, vUv);
+				vec4 snow = texture2D(sTex, vUv);
+
+				vec4 mix1 = mix(grass, hill, min(1.0, mixVal*8.0));
+				vec4 mix2 = mix(hill, snow, mixVal);
+				vec4 mix3 = mix(mix1, mix2, mixVal);
+
+				vec3 reflection = reflect(vI, newNormal);
+
+				vec4 envColor = textureCube(tCube, vec3(reflection.x, reflection.yz));
+
+				gl_FragColor = vec4(mix(mix3.xyz, envColor.xyz, vec3(clamp(reflectionFactor, 0.0, 1.0))), 1.0);
+			}
+
+		</script>
+
+		<script>
+
+			var container, camera, renderer, scene, controls;
+
+			var svs, sfs;
+			var hvs, hfs;
+			var wvs, wfs;
+
+			var skyMesh, waterMesh, heightMesh;
+
+			var cubeMap;
+
+			var heightTex = new THREE.TextureLoader().load('rath.jpg');
+			var grassTex = new THREE.TextureLoader().load('grass.png');
+			var hillTex = new THREE.TextureLoader().load('hill.jpg');
+			var snowTex = new THREE.TextureLoader().load('snow.jpg');
+
+			var hUniforms;
+
+			var gui = new dat.GUI({width: 350});
+
+			var planeSize = 100;
+
+			options = {};
+
+			init();
+			render();
+
+			function init(){
+
+				container = document.getElementById('container');
+				svs = document.getElementById('skyVertexShader').textContent;
+				sfs = document.getElementById('skyFragmentShader').textContent;
+				hvs = document.getElementById('heightVertexShader').textContent;
+				hfs = document.getElementById('heightFragmentShader').textContent;
+				wvs = document.getElementById('waterVertexShader').textContent;
+				wfs = document.getElementById('waterFragmentShader').textContent;
+
+				camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+				camera.position.set(0,20,5);
+
+				controls = new THREE.OrbitControls(camera);
+
+				scene = new THREE.Scene();
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio(window.devicePixelRatio);
+				renderer.setSize(window.innerWidth, window.innerHeight);
+
+				// BEGIN CUBE MAP //
+
+				cubeMap = new THREE.CubeTextureLoader().setPath("./sky/")
+					.load([
+						'posx.jpg',
+						'negx.jpg',
+						'posy.jpg',
+						'negy.jpg',
+						'posz.jpg',
+						'negz.jpg'
+					]);
+
+				skyMat = new THREE.RawShaderMaterial({
+					uniforms: { "tCube": {type: "t", value: cubeMap} },
+					vertexShader: svs,
+					fragmentShader: sfs
+				});
+
+				skyMat.depthWrite = false;
+				skyMat.side = THREE.BackSide;
+
+				var skyGeo = new THREE.BoxGeometry(2000, 2000, 2000);
+
+				skyMesh = new THREE.Mesh(skyGeo, skyMat);
+				scene.add(skyMesh);
+
+				// END CUBE MAP //
+
+				// BEGIN HEIGHT MAP //
+
+				options.displaceAmt = 17.0;
+				options.mixMod = 0.2;
+				options.waterLevel = 5;
+				options.fresnelBias = 0.5;
+				options.fresnelScale = 2;
+				options.fresnelPower = 2;
+				options.waveW = 0.5;
+				options.waveH = 0.5;
+
+				gui.add(options, "displaceAmt", 0, 50);
+				gui.add(options, "mixMod", 0, 1);
+				gui.add(options, "waterLevel", 0, 40);
+				gui.add(options, "fresnelBias", 0, 1);
+				gui.add(options, "fresnelScale", 1, 10);
+				gui.add(options, "fresnelPower", 1, 10);
+				gui.add(options, "waveW", 0, 2);
+				gui.add(options, "waveH", 0, 1);
+
+				var heightGeo = new THREE.PlaneGeometry(planeSize, planeSize, 500, 500);
+
+				hUniforms = {
+						displaceAmt: {type: "f", value: options.displaceAmt},
+						mixMod: {type: "f", value: options.mixMod},
+						pTex: {type: "t", value: heightTex},
+						gTex: {type: "t", value: grassTex},
+						hTex: {type: "t", value: hillTex},
+						sTex: {type: "t", value: snowTex}
+					}
+
+				var heightMat = new THREE.RawShaderMaterial({
+					uniforms: hUniforms,
+					vertexShader: hvs,
+					fragmentShader: hfs
+				})
+
+				heightMesh = new THREE.Mesh(heightGeo, heightMat);
+				heightMesh.material.side = THREE.DoubleSide;
+				heightMesh.rotateX(-Math.PI/2);
+				heightMesh.position.y = -5;
+				scene.add(heightMesh);
+
+				// END HEIGHT MAP //
+
+				// BEGIN WATER //
+
+				var waterGeo = new THREE.PlaneBufferGeometry(planeSize, planeSize, 300, 300)
+
+				wUniforms = {
+					displaceAmt: {type: "f", value: options.displaceAmt},
+					mixMod: {type: "f", value: options.mixMod},
+					tCube: {type: "t", value: cubeMap},
+					fBias: {type: "f", value: options.fresnelBias},
+					fScale: {type: "f", value: options.fresnelScale},
+					fPower: {type: "f", value: options.fresnelPower},
+					pTex: {type: "t", value: heightTex},
+					gTex: {type: "t", value: grassTex},
+					hTex: {type: "t", value: hillTex},
+					sTex: {type: "t", value: snowTex},
+					waveWidth: {type: "f", value: options.waveW},
+					waveHeight: {type: "f", value: options.waveH},
+					time: {type: "f", value: 1.0}
+				}
+
+				var waterMat = new THREE.RawShaderMaterial({
+					uniforms: wUniforms,
+					vertexShader: wvs,
+					fragmentShader: wfs
+				})
+
+
+				waterMesh = new THREE.Mesh(waterGeo, waterMat);
+				waterMesh.material.side = THREE.DoubleSide;
+				waterMesh.rotateX(-Math.PI/2);
+				scene.add(waterMesh);
+
+				// END WATER //
+
+				container.appendChild(renderer.domElement);
+				window.addEventListener('resize', onWindowResize, false);
+
+			}
+
+			function onWindowResize(){
+
+				renderer.setSize(window.innerWidth, window.innerHeight);
+
+				camera.aspect = window.innerWidth/window.innerHeight;
+				camera.updateProjectionMatrix();
+			}
+
+			function updateUniforms(){
+
+				var time = performance.now();
+
+				hUniforms.displaceAmt = {type: "f", value: options.displaceAmt};
+				hUniforms.mixMod = {type: "f", value: options.mixMod};
+				wUniforms.displaceAmt = {type: "f", value: options.displaceAmt};
+				wUniforms.mixMod = {type: "f", value: options.mixMod};
+
+				wUniforms.fBias = {type: "f", value: options.fresnelBias};
+				wUniforms.fScale = {type: "f", value: options.fresnelScale};
+				wUniforms.fPower = {type: "f", value: options.fresnelPower};
+				wUniforms.waveWidth = {type: "f", value: options.waveW};
+				wUniforms.waveHeight = {type: "f", value: options.waveH};
+				wUniforms.time.value = time * 0.001;
+				heightMesh.position.y = -options.waterLevel;
+
+			}
+
+			function render(){
+
+				requestAnimationFrame(render);
+
+				updateUniforms();
+				renderer.render(scene, camera);
+
+			}
+
+
+		</script>
+
+
+	</body>
+</html>
