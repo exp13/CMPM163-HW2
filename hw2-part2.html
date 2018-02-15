@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Lightning in a bottle</title>
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#777;
+				padding:0;
+				margin:0;
+				overflow:hidden;
+			}
+
+			#info {
+				position: absolute;
+				top: 0px;
+				width: 100%;
+				color: #ffffff;
+			}
+
+		</style>
+	</head>
+
+	<body>
+		<div id="container"></div>
+
+		<script src="js/three.js"></script>
+		<script src="js/OrbitControls.js"></script>
+		<script src="js/dat.gui.min.js"></script>
+		<script src="js/GPUParticleSystem.js"></script>
+
+
+		<script id="vertexShader" type="x-shader/x-vertex">
+			precision mediump float;
+
+			uniform mat4 projectionMatrix, viewMatrix, modelMatrix;
+
+			attribute vec3 position;
+
+			void main(){
+				gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+			}
+
+		</script>
+
+		<script id="fragmentShader" type="x-shader/x-fragment">
+
+			void main(){
+				gl_FragColor = vec4(1.0,0.0,0.0,0.1);
+			}
+		</script>
+
+
+		<script>
+
+			var camera, scene, renderer, container;
+			var controls;
+
+			var options, spawnerOptions;
+
+			var gui = new dat.GUI({width: 350});
+			var clock = new THREE.Clock();
+			var particleSys, tick = 0;
+			var strikes = 30;
+			var ballMesh, ballMesh2;
+
+			var tex;
+			var vs, fs;
+
+			init();
+			render();
+
+
+			function init(){
+
+				container = document.getElementById('container');
+
+				camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 10000);
+				camera.position.z = 80;
+
+				scene = new THREE.Scene();
+
+				// particleSys = new THREE.GPUParticleSystem({
+				// 	maxParticles: 25000
+				// });
+
+				particleSys = [strikes];
+
+				options = [strikes];
+
+				masterOptions = {
+					position: new THREE.Vector3(),
+					positionRandomness: 0,
+					velocity: new THREE.Vector3(),
+					velocityRandomness: 0,
+					color: 0xb637c8,
+					colorRandomness: .2,
+					turbulence: 1,
+					lifetime: 0.8,
+					size: 5,
+					sizeRandomness: 0
+				};
+
+				for(var i=0; i < strikes; i++){
+					particleSys[i] = new THREE.GPUParticleSystem({
+						maxParticles: 25000
+					})
+				}
+
+				for(var i=0; i < strikes; i++){
+					particleSys[i].rotation.x = Math.random()*5.5*(Math.PI/3);
+					particleSys[i].rotation.y = Math.random()*5.5*(Math.PI/3);
+					particleSys[i].rotation.z = Math.random()*5.5*(Math.PI/3);
+					scene.add(particleSys[i]);	
+				}
+
+				var pos = 0;
+				for(var i=0; i < strikes; i++){
+					options[i] = {
+						position: new THREE.Vector3(0, 0, 0),
+						positionRandomness: .3,
+						velocity: new THREE.Vector3(
+							Math.random()*(0 - (-1)) + (-1),
+							Math.random()*(2 - (1)) + (1),
+							Math.random()*(1 - (0)) + (0)),
+						velocityRandomness: .5,
+						color: 0xFFFFFF,
+						colorRandomness: .2,
+						turbulence: .5,
+						lifetime: 2,
+						size: 5,
+						sizeRandomness: 1
+					};
+
+				}
+				
+
+				spawnerOptions = {
+					spawnRate: 15000,
+					horizontalSpeed: 1.5,
+					verticalSpeed: 1.33,
+					timeScale: 1
+				}
+
+
+				gui.add(masterOptions, "velocityRandomness", 0, 3);
+				gui.add(masterOptions, "positionRandomness", 0, 3);
+				gui.add(masterOptions, "size", 1, 20);
+				gui.add(masterOptions, "sizeRandomness", 0, 25);
+				gui.add(masterOptions, "colorRandomness", 0, 1);
+				gui.add(masterOptions, "lifetime", .1, 10);
+				gui.add(masterOptions, "turbulence", 0, 1);
+				gui.addColor(masterOptions, "color");
+
+				gui.add(spawnerOptions, "spawnRate", 10, 30000);
+				gui.add(spawnerOptions, "timeScale", -1, 1);
+
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio(window.devicePixelRatio);
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				renderer.setClearColor(0xfffff0,0.5);
+				container.appendChild(renderer.domElement);
+
+				controls = new THREE.OrbitControls(camera);
+
+				vs = document.getElementById("vertexShader").textContent;
+				fs = document.getElementById("fragmentShader").textContent;
+
+				var ballGeo = new THREE.SphereGeometry(40, 32, 32);
+				var ballMat = new THREE.MeshBasicMaterial({
+					color: 0xffffff,
+					transparent: true,
+					opacity: 0.2
+				})
+
+				var ballGeo2 = new THREE.SphereGeometry(1, 10, 10);
+				var ballMat2 = new THREE.MeshBasicMaterial({
+					color: 0x000000,
+					transparent: false
+				})
+
+				ballMesh = new THREE.Mesh(ballGeo, ballMat);
+				ballMesh2 = new THREE.Mesh(ballGeo2, ballMat2);
+				scene.add(ballMesh);
+				scene.add(ballMesh2);
+
+				window.addEventListener('resize', onWindowResize, false);
+
+
+			}
+
+			function onWindowResize(){
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize(window.innerWidth, window.innerHeight);
+
+			}
+
+			function updateOptions(){
+
+				// FOR REFERENCE
+				// gui.add(masterOptions, "velocityRandomness", 0, 3);
+				// gui.add(masterOptions, "positionRandomness", 0, 3);
+				// gui.add(masterOptions, "size", 1, 20);
+				// gui.add(masterOptions, "sizeRandomness", 0, 25);
+				// gui.add(masterOptions, "colorRandomness", 0, 1);
+				// gui.add(masterOptions, "lifetime", .1, 10);
+				// gui.add(masterOptions, "turbulence", 0, 1);
+				// also color
+				
+
+				for(var i=0; i < strikes; i++){
+					options[i].velocityRandomness = masterOptions.velocityRandomness;
+					options[i].positionRandomness = masterOptions.positionRandomness;
+					options[i].size = masterOptions.size;
+					options[i].sizeRandomness = masterOptions.sizeRandomness;
+					options[i].colorRandomness = masterOptions.colorRandomness;
+					options[i].lifetime = masterOptions.lifetime;
+					options[i].turbulence = masterOptions.turbulence;
+					options[i].color = masterOptions.color;
+				}
+			}
+
+
+			function render(){
+
+				requestAnimationFrame(render);
+
+				updateOptions();
+
+				var delta = clock.getDelta() * spawnerOptions.timeScale;
+
+				tick += delta;
+
+				if (tick < 0) tick = 0;
+
+				if (delta > 0) {
+					for(var j=0; j < strikes; j++){
+						for(var i = 0; i < spawnerOptions.spawnRate * delta; i++){
+							particleSys[j].spawnParticle(options[j]);
+						}
+					}
+				}
+
+				for(var i=0; i < strikes; i++){
+					particleSys[i].update(tick);
+				}
+				//particleSys.update(tick);
+
+				renderer.render(scene, camera);
+
+			}
+
+
+
+		</script>
+
+
+	</body>
+</html>

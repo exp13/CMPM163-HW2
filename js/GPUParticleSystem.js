@@ -366,8 +366,8 @@ THREE.GPUParticleContainer = function ( maxParticles, particleSystem ) {
 		// color
 
 		color.r = THREE.Math.clamp( color.r + particleSystem.random() * colorRandomness, 0, 1 );
-		color.g = 1.0; THREE.Math.clamp( color.g + particleSystem.random() * colorRandomness, 0, 1 );
-		color.b = 0.0; THREE.Math.clamp( color.b + particleSystem.random() * colorRandomness, 0, 1 );
+		color.g = THREE.Math.clamp( color.g + particleSystem.random() * colorRandomness, 0, 1 );
+		color.b = THREE.Math.clamp( color.b + particleSystem.random() * colorRandomness, 0, 1 );
 
 		colorAttribute.array[ i * 3 + 0 ] = color.r;
 		colorAttribute.array[ i * 3 + 1 ] = color.g;
