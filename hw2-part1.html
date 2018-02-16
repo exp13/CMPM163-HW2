@@ -175,7 +175,7 @@
 				wPosition = (modelMatrix * vec4(position, 1.0)).xyz;
 
 				vI = wPosition - cameraPosition;
-				nI = normalize((transpose(modelMatrix) * vec4(vI, 1.0)).xyz);
+				//nI = normalize((transpose(modelMatrix) * vec4(vI, 1.0)).xyz);
 				vUv = uv;
 
 				vec4 clr = texture2D(pTex, vec2(vUv.x, vUv.y));
